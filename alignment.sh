@@ -96,19 +96,24 @@ python3 pdgrep.py --leftovers $datadir/leftovers/ --seqs $input_fasta --pda $dat
 # align the k most dissimilar sequences in MAFFT
 mafft --thread -1 $datadir/${input_base}_kselect.fasta > $datadir/${input_base}_A_k_untrimmed.fasta
 
+# remove columns with >=95% gap -- fixes weird alignments
+trimal -keepheader -gt 0.95 -in $datadir/${input_base}_A_k_untrimmed.fasta -out data/${input_base}_A_k.fasta
+
 fi
 
-trimal -keepheader -in $datadir/${input_base}_A_k_untrimmed.fasta -out data/gisaid_cov2020_sequences_A_k.fasta
+if [[ $lazy == no || $datadir/${input_base}_A_k.fasta -nt $datadir/${input_base}_A_k.fasta ]]
+then
 
 mkdir -p $datadir/profilealn/ 
 parallel --bar mafft --thread 1 --keeplength --addprofile {} $datadir/${input_base}_A_k.fasta \>  $datadir/profilealn/{/} 2\> $datadir/profilealn/{/.}.log :::  $datadir/leftovers/*.fasta
 
 python3 gatherprofilealn.py -o $datadir/${input_base}_A_g.fasta $datadir/profilealn/*.fasta
 
+fi
 
 ################
 #  Nuke temps  #
 ################
 
-#rm -rf $datadir/${input_base}_kselect.pda  $datadir/profilealn  $datadir/leftovers
+rm -rf $datadir/${input_base}_kselect*  $datadir/profilealn  $datadir/leftovers $datadir/${input_base}_guide.tree
 
