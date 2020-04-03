@@ -57,7 +57,7 @@ set -x
 # how many sequences?
 n=$(grep '>' $input_fasta | wc -l)
 
-if [[ $lazy == yes && $input_fasta -nt $datadir/${input_base}_guide.tree ]]
+if [[ $lazy == no || $input_fasta -nt $datadir/${input_base}_guide.tree ]]
 then
     if (( $n > 50000 )); then
         # use this method for maximum speed
@@ -79,10 +79,11 @@ then
 rm -f $input_fasta.tree
 # add a semicolon to the tree so iq-tree can read it
 echo ";" >>  $datadir/${input_base}_guide.tree
+
 fi
 
 
-if [[ lazy==yes && $datadir/${input_base}_guide.tree -nt $datadir/${input_base}_A_k.fasta ]]
+if [[ $lazy == no || $datadir/${input_base}_guide.tree -nt $datadir/${input_base}_A_k.fasta ]]
 then
 
 # get the k most dissimilar sequences using iq-tree
@@ -93,12 +94,14 @@ mkdir -p $datadir/leftovers/
 python3 pdgrep.py --leftovers $datadir/leftovers/ --seqs $input_fasta --pda $datadir/${input_base}_kselect.pda  --output $datadir/${input_base}_kselect.fasta
 
 # align the k most dissimilar sequences in MAFFT
-mafft --thread -1 $datadir/${input_base}_kselect.fasta > $datadir/${input_base}_A_k.fasta
+mafft --thread -1 $datadir/${input_base}_kselect.fasta > $datadir/${input_base}_A_k_untrimmed.fasta
 
 fi
 
+trimal -keepheader -in $datadir/${input_base}_A_k_untrimmed.fasta -out data/gisaid_cov2020_sequences_A_k.fasta
+
 mkdir -p $datadir/profilealn/ 
-parallel -j 8 test -f o mafft --thread 1 --addprofile {} $datadir/${input_base}_A_k.fasta \>  $datadir/profilealn/{/} :::  $datadir/leftovers/*.fasta
+parallel --bar mafft --thread 1 --keeplength --addprofile {} $datadir/${input_base}_A_k.fasta \>  $datadir/profilealn/{/} 2\> $datadir/profilealn/{/.}.log :::  $datadir/leftovers/*.fasta
 
 python3 gatherprofilealn.py -o $datadir/${input_base}_A_g.fasta $datadir/profilealn/*.fasta
 
