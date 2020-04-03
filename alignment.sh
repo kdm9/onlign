@@ -46,6 +46,7 @@ input_base=$(basename $input_fasta .fasta)
 
 iqtree="${IQTREE_PATH:-iqtree}"
 mafft="${MAFFT_PATH:-mafft}"
+lazy=yes
 
 
 #######################################################################
@@ -56,7 +57,7 @@ set -x
 # how many sequences?
 n=$(grep '>' $input_fasta | wc -l)
 
-if [ $input_fasta -nt $datadir/${input_base}_guide.tree ]
+if [[ $lazy == yes && $input_fasta -nt $datadir/${input_base}_guide.tree ]]
 then
     if (( $n > 50000 )); then
         # use this method for maximum speed
@@ -81,11 +82,30 @@ echo ";" >>  $datadir/${input_base}_guide.tree
 fi
 
 
+if [[ lazy==yes && $datadir/${input_base}_guide.tree -nt $datadir/${input_base}_A_k.fasta ]]
+then
+
 # get the k most dissimilar sequences using iq-tree
 $iqtree -pre $datadir/${input_base}_kselect -te $datadir/${input_base}_guide.tree -k $k
 
 # use custom python script to extract sequences by EPIid
-python3 pdgrep.py --seqs $input_fasta --pda $datadir/${input_base}_kselect.pda  --output $datadir/${input_base}_kselect.fasta
+mkdir -p $datadir/leftovers/ 
+python3 pdgrep.py --leftovers $datadir/leftovers/ --seqs $input_fasta --pda $datadir/${input_base}_kselect.pda  --output $datadir/${input_base}_kselect.fasta
 
 # align the k most dissimilar sequences in MAFFT
-mafft --thread -1 $datadir/${input_base}_kselect.fasta > $datadir/${input_base}_kselect_aligned.fasta
+mafft --thread -1 $datadir/${input_base}_kselect.fasta > $datadir/${input_base}_A_k.fasta
+
+fi
+
+mkdir -p $datadir/profilealn/ 
+parallel -j 8 test -f o mafft --thread 1 --addprofile {} $datadir/${input_base}_A_k.fasta \>  $datadir/profilealn/{/} :::  $datadir/leftovers/*.fasta
+
+python3 gatherprofilealn.py -o $datadir/${input_base}_A_g.fasta $datadir/profilealn/*.fasta
+
+
+################
+#  Nuke temps  #
+################
+
+#rm -rf $datadir/${input_base}_kselect.pda  $datadir/profilealn  $datadir/leftovers
+
